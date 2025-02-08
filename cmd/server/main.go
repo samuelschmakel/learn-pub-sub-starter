@@ -19,7 +19,6 @@ func main() {
 	}
 
 	defer conn.Close()
-
 	fmt.Println("connection was successful")
 
 	// wait for ctrl+c
