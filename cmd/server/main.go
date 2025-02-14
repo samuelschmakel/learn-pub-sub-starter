@@ -34,13 +34,14 @@ func main() {
 	// Create loop
 
 	for {
-		slice := gamelogic.GetInput()
-		if len(slice) == 0 {
+		words := gamelogic.GetInput()
+		if len(words) == 0 {
 			continue
 		}
 
-		if slice[0] == "pause" {
-			fmt.Println("Sending a pause message...")
+		switch words[0] {
+		case "pause":
+			fmt.Println("Publishing paused game state")
 			err = pubsub.PublishJSON(
 				publishCh, 
 				routing.ExchangePerilDirect, 
@@ -52,10 +53,8 @@ func main() {
 			if err != nil {
 				log.Fatalf("could not publish message: %v", err)
 			}
-		
-			fmt.Println("Pause message sent!")
-		} else if slice[0] == "resume" {
-			fmt.Println("Sending a resume message...")
+		case "resume":
+			fmt.Println("Publishing resumes game state")
 			err = pubsub.PublishJSON(
 				publishCh, 
 				routing.ExchangePerilDirect, 
@@ -67,13 +66,11 @@ func main() {
 			if err != nil {
 				log.Fatalf("could not publish message: %v", err)
 			}
-		
-			fmt.Println("Resume message sent!")
-		} else if slice[0] == "quit" {
-			fmt.Println("Exiting...")
-			break
-		} else {
-			fmt.Println("Invalid command")
+		case "quit":
+			log.Println("Exiting")
+			return
+		default:
+			fmt.Println("Unknown command")
 		}
 	}
 
