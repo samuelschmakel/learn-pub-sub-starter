@@ -36,7 +36,42 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to declare and bind queue: %v", err)
 	}
-	
+	// This print statement is a placeholder because I am not using the channel or queue yet in this file
 	fmt.Println(ch, queue)
-	select {}
+
+	gs := gamelogic.NewGameState(username)
+
+	// Create REPL with an infinite loop:
+
+	for {
+		words := gamelogic.GetInput()
+		if len(words) == 0 {
+			continue
+		}
+
+		switch words[0] {
+		case "spawn":
+			err := gs.CommandSpawn(words)
+			if err != nil{
+				log.Fatalf("invalid use of spawn: %v", err)
+			}
+		case "move":
+			_, err := gs.CommandMove(words)
+			if err != nil {
+				log.Fatalf("invalid use of move: %v", err)
+			}
+		case "status":
+			gs.CommandStatus()
+		case "help":
+			gamelogic.PrintClientHelp()
+		case "spam":
+			fmt.Println("Spamming is not allowed yet!")
+		case "quit":
+			gamelogic.PrintQuit()
+			return
+		default:
+			fmt.Println("Unknown command")
+		}
+
+	}
 }

@@ -73,6 +73,4 @@ func main() {
 			fmt.Println("Unknown command")
 		}
 	}
-
-	// End of loop creation
 }
