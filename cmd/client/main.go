@@ -32,15 +32,19 @@ func main() {
 
 	queueName := routing.PauseKey + "." + username
 	fmt.Printf("the queue name is: %s\n", queueName)
-	ch, queue, err := pubsub.DeclareAndBind(conn, routing.ExchangePerilDirect, queueName, routing.PauseKey, 1) // 1 for "transient" in the last arg
+	_, queue, err := pubsub.DeclareAndBind(conn, routing.ExchangePerilDirect, queueName, routing.PauseKey, pubsub.SimpleQueueTransient) // 1 for "transient" in the last arg
 	if err != nil {
 		log.Fatalf("Failed to declare and bind queue: %v", err)
 	}
 	// This print statement is a placeholder because I am not using the channel or queue yet in this file
-	fmt.Println(ch, queue)
+	fmt.Printf("Queue %v declared and bound!\n", queue.Name)
 
 	gs := gamelogic.NewGameState(username)
 
+	err = pubsub.SubscribeJSON(conn, routing.ExchangePerilDirect, routing.PauseKey+"."+gs.GetUsername(), routing.PauseKey, pubsub.SimpleQueueTransient, handlerPause(gs))
+	if err != nil {
+		log.Fatalf("could not subscribe to puase: %v", err)
+	}
 	// Create REPL with an infinite loop:
 
 	for {
@@ -53,12 +57,14 @@ func main() {
 		case "spawn":
 			err := gs.CommandSpawn(words)
 			if err != nil{
-				log.Fatalf("invalid use of spawn: %v", err)
+				fmt.Println(err)
+				continue
 			}
 		case "move":
 			_, err := gs.CommandMove(words)
 			if err != nil {
-				log.Fatalf("invalid use of move: %v", err)
+				fmt.Println(err)
+				continue
 			}
 		case "status":
 			gs.CommandStatus()
@@ -73,5 +79,12 @@ func main() {
 			fmt.Println("Unknown command")
 		}
 
+	}
+}
+
+func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) {
+	return func(ps routing.PlayingState) {
+		defer fmt.Print("> ")
+		gs.HandlePause(ps)
 	}
 }

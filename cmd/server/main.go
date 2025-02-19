@@ -31,6 +31,13 @@ func main() {
 	}
 	defer publishCh.Close()
 
+	// Bind a queue to the peril_topic exchange
+	_, queue, err := pubsub.DeclareAndBind(conn, routing.ExchangePerilTopic, routing.GameLogSlug, routing.GameLogSlug+".*", 0)
+	if err != nil {
+		log.Fatalf("could not declare and bind game_logs queue: %v", err)
+	}
+	fmt.Printf("Queue %v declared and bound!\n", queue.Name)
+
 	// Create loop
 
 	for {
