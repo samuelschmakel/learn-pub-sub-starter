@@ -32,7 +32,7 @@ func main() {
 
 	queueName := routing.PauseKey + "." + username
 	fmt.Printf("the queue name is: %s\n", queueName)
-	_, queue, err := pubsub.DeclareAndBind(conn, routing.ExchangePerilDirect, queueName, routing.PauseKey, pubsub.SimpleQueueTransient) // 1 for "transient" in the last arg
+	ch, queue, err := pubsub.DeclareAndBind(conn, routing.ExchangePerilDirect, queueName, routing.PauseKey, pubsub.SimpleQueueTransient) // 1 for "transient" in the last arg
 	if err != nil {
 		log.Fatalf("Failed to declare and bind queue: %v", err)
 	}
@@ -43,8 +43,13 @@ func main() {
 
 	err = pubsub.SubscribeJSON(conn, routing.ExchangePerilDirect, routing.PauseKey+"."+gs.GetUsername(), routing.PauseKey, pubsub.SimpleQueueTransient, handlerPause(gs))
 	if err != nil {
-		log.Fatalf("could not subscribe to puase: %v", err)
+		log.Fatalf("could not subscribe to pause: %v", err)
 	}
+
+	// Bind to the army_moves.* routing key
+	queueName = routing.ArmyMovesPrefix + "." + username
+	err = pubsub.SubscribeJSON[gamelogic.ArmyMove](conn, routing.ExchangePerilTopic, queueName, routing.ArmyMovesPrefix+".*", pubsub.SimpleQueueTransient, handlerMove(gs))
+
 	// Create REPL with an infinite loop:
 
 	for {
@@ -61,11 +66,23 @@ func main() {
 				continue
 			}
 		case "move":
-			_, err := gs.CommandMove(words)
+			// Execute the move locally
+			moveData, err := gs.CommandMove(words)
 			if err != nil {
 				fmt.Println(err)
 				continue
 			}
+
+			// Publish the move to other clients
+			routingKey := fmt.Sprintf("%s.%s", routing.ArmyMovesPrefix, gs.GetUsername())
+			err = pubsub.PublishJSON(ch, routing.ExchangePerilTopic, routingKey, moveData)
+			if err != nil {
+				fmt.Println("Failed to publish move:", err)
+				continue
+			}
+
+			fmt.Println("Move published successfully")
+
 		case "status":
 			gs.CommandStatus()
 		case "help":
@@ -86,5 +103,13 @@ func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) {
 	return func(ps routing.PlayingState) {
 		defer fmt.Print("> ")
 		gs.HandlePause(ps)
+	}
+}
+
+// To do: write handlerMove function
+func handlerMove(gs *gamelogic.GameState) func(gamelogic.ArmyMove) {
+	return func(move gamelogic.ArmyMove) {
+		defer fmt.Print("> ")
+		gs.HandleMove(move)
 	}
 }
