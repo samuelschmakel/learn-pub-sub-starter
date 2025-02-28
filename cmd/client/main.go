@@ -14,9 +14,9 @@ import (
 func main() {
 	fmt.Println("Starting Peril client...")
 
-	const connString = "amqp://guest:guest@localhost:5672/"
+	const rabbitConnString = "amqp://guest:guest@localhost:5672/"
 
-	conn, err := amqp.Dial(connString)
+	conn, err := amqp.Dial(rabbitConnString)
 	if err != nil {
 		log.Fatalf("could not connect to RabbitMQ: %v", err)
 	}
@@ -24,31 +24,42 @@ func main() {
 	defer conn.Close()
 	fmt.Println("Peril client connected to RabbitMQ")
 
+	publishCh, err := conn.Channel()
+	if err != nil {
+		log.Fatalf("could not create channel: %v", err)
+	}
+
 	// Prompt the user for a username
 	username, err := gamelogic.ClientWelcome()
 	if err != nil {
 		log.Fatalf("no username given")
 	}
-
-	queueName := routing.PauseKey + "." + username
-	fmt.Printf("the queue name is: %s\n", queueName)
-	ch, queue, err := pubsub.DeclareAndBind(conn, routing.ExchangePerilDirect, queueName, routing.PauseKey, pubsub.SimpleQueueTransient) // 1 for "transient" in the last arg
-	if err != nil {
-		log.Fatalf("Failed to declare and bind queue: %v", err)
-	}
-	// This print statement is a placeholder because I am not using the channel or queue yet in this file
-	fmt.Printf("Queue %v declared and bound!\n", queue.Name)
-
 	gs := gamelogic.NewGameState(username)
 
-	err = pubsub.SubscribeJSON(conn, routing.ExchangePerilDirect, routing.PauseKey+"."+gs.GetUsername(), routing.PauseKey, pubsub.SimpleQueueTransient, handlerPause(gs))
+	// Subscribe to the army prefix key
+	err = pubsub.SubscribeJSON(
+		conn, 
+		routing.ExchangePerilDirect, 
+		routing.ArmyMovesPrefix+"."+gs.GetUsername(), 
+		routing.ArmyMovesPrefix+".*", 
+		pubsub.SimpleQueueTransient, 
+		handlerPause(gs))
+	if err != nil {
+		log.Fatalf("could not subscribe to army moves: %v", err)
+	}
+
+	// Subscribe to the pause key
+	err = pubsub.SubscribeJSON(
+		conn, 
+		routing.ExchangePerilTopic, 
+		routing.PauseKey+"."+gs.GetUsername(), 
+		routing.PauseKey, 
+		pubsub.SimpleQueueTransient, 
+		handlerMove(gs),
+	)
 	if err != nil {
 		log.Fatalf("could not subscribe to pause: %v", err)
 	}
-
-	// Bind to the army_moves.* routing key
-	queueName = routing.ArmyMovesPrefix + "." + username
-	err = pubsub.SubscribeJSON[gamelogic.ArmyMove](conn, routing.ExchangePerilTopic, queueName, routing.ArmyMovesPrefix+".*", pubsub.SimpleQueueTransient, handlerMove(gs))
 
 	// Create REPL with an infinite loop:
 
@@ -67,21 +78,21 @@ func main() {
 			}
 		case "move":
 			// Execute the move locally
-			moveData, err := gs.CommandMove(words)
+			mv, err := gs.CommandMove(words)
 			if err != nil {
 				fmt.Println(err)
 				continue
 			}
 
 			// Publish the move to other clients
-			routingKey := fmt.Sprintf("%s.%s", routing.ArmyMovesPrefix, gs.GetUsername())
-			err = pubsub.PublishJSON(ch, routing.ExchangePerilTopic, routingKey, moveData)
+			routingKey := fmt.Sprintf("%s.%s", routing.ArmyMovesPrefix, mv.Player.Username)
+			err = pubsub.PublishJSON(publishCh, routing.ExchangePerilTopic, routingKey, mv)
 			if err != nil {
 				fmt.Println("Failed to publish move:", err)
 				continue
 			}
 
-			fmt.Println("Move published successfully")
+			fmt.Printf("Moved %v units to %s\n", mv.Units, mv.ToLocation)
 
 		case "status":
 			gs.CommandStatus()
@@ -96,20 +107,5 @@ func main() {
 			fmt.Println("Unknown command")
 		}
 
-	}
-}
-
-func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) {
-	return func(ps routing.PlayingState) {
-		defer fmt.Print("> ")
-		gs.HandlePause(ps)
-	}
-}
-
-// To do: write handlerMove function
-func handlerMove(gs *gamelogic.GameState) func(gamelogic.ArmyMove) {
-	return func(move gamelogic.ArmyMove) {
-		defer fmt.Print("> ")
-		gs.HandleMove(move)
 	}
 }
