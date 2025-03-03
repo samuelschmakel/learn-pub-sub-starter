@@ -9,6 +9,7 @@ import (
 )
 
 func PublishJSON[T any](ch *amqp.Channel, exchange, key string, val T) error {
+	fmt.Printf("Publishing to exchange: %s with key: %s\n", exchange, key)
 	jsonData, err := json.Marshal(val)
 	if err != nil {
 		return fmt.Errorf("couldn't unmarshal json: %v", err)

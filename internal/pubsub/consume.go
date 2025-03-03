@@ -7,11 +7,19 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
+type Acktype int
+
 type SimpleQueueType int
 
 const (
 	SimpleQueueDurable SimpleQueueType = iota
 	SimpleQueueTransient
+)
+
+const (
+	Ack Acktype = iota
+	NackRequeue
+	NackDiscard
 )
 
 func DeclareAndBind(
@@ -21,6 +29,7 @@ func DeclareAndBind(
 	key string,
 	simpleQueueType SimpleQueueType, // an enum to represent "durable" or "transient"
 ) (*amqp.Channel, amqp.Queue, error) {
+	fmt.Printf("Declaring exchange: %s, queue: %s, key: %s\n", exchange, queueName, key)
 	ch, err := conn.Channel()
 	if err != nil {
 		return nil, amqp.Queue{}, fmt.Errorf("error creating channel: %v", err)
@@ -45,7 +54,7 @@ func DeclareAndBind(
 	return ch, queue, nil
 }
 
-func SubscribeJSON[T any](conn *amqp.Connection, exchange, queueName, key string, simpleQueueType SimpleQueueType, handler func(T)) error {
+func SubscribeJSON[T any](conn *amqp.Connection, exchange, queueName, key string, simpleQueueType SimpleQueueType, handler func(T) Acktype,) error {
 	ch, queue, err := DeclareAndBind(conn, exchange, queueName, key, simpleQueueType)
 	if err != nil {
 		return fmt.Errorf("queue does not exist or is not bound to the exchange: %v", err)
@@ -67,11 +76,20 @@ func SubscribeJSON[T any](conn *amqp.Connection, exchange, queueName, key string
 		for msg := range msgs {
 			target, err := unmarshaller(msg.Body)
 			if err != nil {
-				fmt.Printf("could not unmarshal message: %v", err)
+				fmt.Printf("could not unmarshal message: %v\n", err)
 				continue
 			}
-			handler(target)
-			msg.Ack(false)
+			switch handler(target) {
+			case Ack:
+				msg.Ack(false)
+				fmt.Println("Ack")
+			case NackDiscard:
+				msg.Nack(false, false)
+				fmt.Println("NackDiscard")
+			case NackRequeue:
+				msg.Nack(false, true)
+				fmt.Println("NackRequeue")
+			}
 		}
 	}()
 	return nil

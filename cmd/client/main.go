@@ -36,26 +36,24 @@ func main() {
 	}
 	gs := gamelogic.NewGameState(username)
 
-	// Subscribe to the army prefix key
 	err = pubsub.SubscribeJSON(
-		conn, 
-		routing.ExchangePerilDirect, 
-		routing.ArmyMovesPrefix+"."+gs.GetUsername(), 
-		routing.ArmyMovesPrefix+".*", 
-		pubsub.SimpleQueueTransient, 
-		handlerPause(gs))
+		conn,
+		routing.ExchangePerilTopic,
+		routing.ArmyMovesPrefix+"."+gs.GetUsername(),
+		routing.ArmyMovesPrefix+".*",
+		pubsub.SimpleQueueTransient,
+		handlerMove(gs),
+	)
 	if err != nil {
 		log.Fatalf("could not subscribe to army moves: %v", err)
 	}
-
-	// Subscribe to the pause key
 	err = pubsub.SubscribeJSON(
-		conn, 
-		routing.ExchangePerilTopic, 
-		routing.PauseKey+"."+gs.GetUsername(), 
-		routing.PauseKey, 
-		pubsub.SimpleQueueTransient, 
-		handlerMove(gs),
+		conn,
+		routing.ExchangePerilDirect,
+		routing.PauseKey+"."+gs.GetUsername(),
+		routing.PauseKey,
+		pubsub.SimpleQueueTransient,
+		handlerPause(gs),
 	)
 	if err != nil {
 		log.Fatalf("could not subscribe to pause: %v", err)
@@ -87,6 +85,7 @@ func main() {
 			// Publish the move to other clients
 			routingKey := fmt.Sprintf("%s.%s", routing.ArmyMovesPrefix, mv.Player.Username)
 			err = pubsub.PublishJSON(publishCh, routing.ExchangePerilTopic, routingKey, mv)
+			fmt.Println("published message")
 			if err != nil {
 				fmt.Println("Failed to publish move:", err)
 				continue
