@@ -24,13 +24,16 @@ func handlerMove(gs *gamelogic.GameState, publishCh *amqp.Channel) func(gamelogi
 				Defender: gs.GetPlayerSnap(),
 			}
 
-			pubsub.PublishJSON(
+			err := pubsub.PublishJSON(
 			publishCh,
 			routing.ExchangePerilTopic,
 			routing.WarRecognitionsPrefix+"."+gs.GetUsername(),
 			warDeclaration,
 			)
-			return pubsub.NackRequeue
+			if err != nil {
+				return pubsub.NackRequeue
+			}
+			return pubsub.Ack
 		}
 		fmt.Println("error: unknown move outcome")
 		return pubsub.NackDiscard
