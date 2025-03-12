@@ -49,20 +49,47 @@ func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) pubsub.Ack
 	}
 }
 
-func handlerWar(gs *gamelogic.GameState) func(gamelogic.RecognitionOfWar) pubsub.Acktype {
+func handlerWar(gs *gamelogic.GameState, publishCh *amqp.Channel) func(gamelogic.RecognitionOfWar) pubsub.Acktype {
 	return func(warRec gamelogic.RecognitionOfWar) pubsub.Acktype {
 		defer fmt.Print("> ")
-		outcome, _, _ := gs.HandleWar(warRec)
+		outcome, winner, loser := gs.HandleWar(warRec)
 		switch outcome {
 		case gamelogic.WarOutcomeNotInvolved:
 			return pubsub.NackRequeue
 		case gamelogic.WarOutcomeNoUnits:
 			return pubsub.NackDiscard
 		case gamelogic.WarOutcomeOpponentWon:
+			err := pubsub.PublishGob(
+			publishCh,
+			routing.ExchangePerilTopic,
+			routing.GameLogSlug+"."+warRec.Attacker.Username,
+			fmt.Sprintf("%s won a war against %s", winner, loser),
+			)
+			if err != nil {
+				return pubsub.NackRequeue
+			}
 			return pubsub.Ack
 		case gamelogic.WarOutcomeYouWon:
+			err := pubsub.PublishGob(
+				publishCh,
+				routing.ExchangePerilTopic,
+				routing.GameLogSlug+"."+warRec.Attacker.Username,
+				fmt.Sprintf("%s won a war against %s", winner, loser),
+				)
+				if err != nil {
+					return pubsub.NackRequeue
+				}
 			return pubsub.Ack
 		case gamelogic.WarOutcomeDraw:
+			err := pubsub.PublishGob(
+				publishCh,
+				routing.ExchangePerilTopic,
+				routing.GameLogSlug+"."+warRec.Attacker.Username,
+				fmt.Sprintf("A war between %s and %s resulted in a draw", winner, loser),
+				)
+				if err != nil {
+					return pubsub.NackRequeue
+				}
 			return pubsub.Ack
 		default:
 			fmt.Println("Error in war")
