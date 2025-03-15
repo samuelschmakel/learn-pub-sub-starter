@@ -31,12 +31,12 @@ func main() {
 	}
 	defer publishCh.Close()
 
-	// Bind a queue to the peril_topic exchange
-	_, queue, err := pubsub.DeclareAndBind(conn, routing.ExchangePerilTopic, routing.GameLogSlug, routing.GameLogSlug+".*", 0)
+	// Subscribe to the game_logs queue
+	// TO DO: create gamestate to pass to handler, or rewrite handler
+	err = pubsub.SubscribeGob(conn, routing.ExchangePerilTopic, routing.GameLogSlug, routing.GameLogSlug+".*", 0, handlerLogs())
 	if err != nil {
-		log.Fatalf("could not declare and bind game_logs queue: %v", err)
+		log.Fatalf("could not start consuming logs: %v", err)
 	}
-	fmt.Printf("Queue %v declared and bound!\n", queue.Name)
 
 	// Create loop
 
